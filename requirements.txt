@@ -1,0 +1,12 @@
+# AimLab ColorBot - Python Dependencies
+# Install with:  
+
+opencv-python>=4.8.0      # Core computer vision (color filter, HoughCircles, contours)
+mss>=9.0.1                # Fast cross-platform screen capture
+pyautogui>=0.9.54         # Mouse movement and clicking
+numpy>=1.24.0             # Array operations
+Pillow>=10.0.0            # Image helpers (used internally by mss/pyautogui)
+keyboard>=0.13.5          # Global hotkey listener for emergency stop
+
+# Optional: Enable USE_OCR=True in config.py for pytesseract OCR
+# pytesseract>=0.3.10     # OCR (also requires Tesseract binary installed)
