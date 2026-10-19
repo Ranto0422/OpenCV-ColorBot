@@ -1,164 +1,77 @@
-# AimLab ColorBot — OpenCV School Project
+# OpenCV ColorBot
 
-A real-time **color detection bot** for AimLab built with Python and OpenCV.
-Demonstrates computer vision concepts for a school project:
+A real-time computer vision program that captures the screen, finds round color targets in the aim-trainer game AimLab, measures them, and clicks the nearest one. Built for a Graphics and Visual Computing course to apply color-space filtering, the Hough transform and contour analysis to a live video feed.
 
-| Concept | Implementation |
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?logo=opencv&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
+
+| | |
 |---|---|
-| Screen capture | `mss` (fast pixel-perfect grab) |
-| HSV color filtering | `cv2.inRange` on each frame |
-| Circle detection | `cv2.HoughCircles` (Hough Transform) |
-| Shape detection | `cv2.findContours` + circularity metric |
-| Size measurement | Pixel radius → inch conversion via monitor PPI |
-| Auto-clicking | `pyautogui.click` with nearest-target selection |
-| Live overlay | OpenCV window with bounding boxes, labels, FPS HUD |
+| **Stack** | Python, OpenCV, NumPy, mss (screen capture), pyautogui, keyboard |
+| **Pipeline** | Capture → blur → HSV mask → morphology → HoughCircles + contours → merge by IoU → pick target → click |
+| **Highlights** | Two detection methods combined, live debug overlay with FPS and mask view, CLI flags, hotkeys and failsafe |
 
----
+## Pipeline
 
-## Project Structure
+```
+screen frame (mss)
+  → Gaussian blur
+  → BGR to HSV, cv2.inRange mask for the chosen color profile
+  → morphological open (remove specks) and close (fill holes)
+  → cv2.HoughCircles            primary: finds round targets
+  → cv2.findContours            fallback: catches partly hidden targets, scores circularity
+  → merge duplicates by IoU
+  → choose the target nearest the cursor, click with a small random offset
+  → draw overlay
+```
+
+| Concept | Where |
+|---|---|
+| HSV color filtering | `detector.py` |
+| Hough Circle Transform | `detector.py` |
+| Contours and circularity, `4π·area / perimeter²` | `detector.py` |
+| IoU de-duplication of the two detectors | `detector.py` |
+| Pixel to inch size (`diameter_px / monitor PPI`) | `detector.py`, `config.py` |
+| Target selection and click rate limiting | `clicker.py` |
+| Overlay: boxes, labels, confidence bars, FPS HUD, mask inset | `overlay.py` |
+
+## Project structure
 
 ```
 OpenCV-ColorBot/
-├── main.py          # Entry point & main loop
-├── config.py        # All tunable parameters
-├── detector.py      # Color + circle + contour detection engine
-├── clicker.py       # Target selection & mouse clicking
-├── overlay.py       # Real-time visual overlay renderer
+├── main.py          entry point, CLI arguments, main loop, hotkeys
+├── config.py        all tunable values: color profiles, Hough settings, click delay, PPI
+├── detector.py      color, circle and contour detection
+├── clicker.py       target selection and clicking
+├── overlay.py       live debug overlay
 └── requirements.txt
 ```
 
----
+## Running it
 
-## How It Works
-
-### 1. Screen Capture
-Every frame the bot grabs a screenshot using `mss`, which is much faster than
-`PIL.ImageGrab` because it calls native OS APIs directly.
-
-### 2. HSV Color Filtering
-The captured BGR frame is converted to **HSV** (Hue-Saturation-Value) color
-space. HSV is preferred over RGB for color detection because the hue channel is
-independent of lighting changes.
-
-A binary mask is created with `cv2.inRange`, leaving only pixels that match the
-target color range (configurable in `config.py`).
-
-```
-BGR frame → GaussianBlur → HSV → inRange mask → morphological cleanup
-```
-
-### 3. Circle Detection (Hough Transform)
-`cv2.HoughCircles` uses the **Hough Circle Transform** to find circular shapes
-in the masked grayscale image. This is the primary method for AimLab targets
-because targets are round orbs.
-
-Parameters tunable in `config.py`:
-- `HOUGH_DP` — accumulator resolution
-- `HOUGH_PARAM2` — sensitivity (lower → more circles found)
-- `HOUGH_MIN/MAX_RADIUS` — expected target size range
-
-### 4. Contour-based Shape Detection
-As a fallback (and to catch non-circular or partially occluded targets),
-`cv2.findContours` extracts all connected blobs from the mask. Each contour's
-**circularity** is computed:
-
-$$\text{circularity} = \frac{4\pi \cdot \text{area}}{\text{perimeter}^2}$$
-
-A perfect circle has circularity = 1.0. This score is used as the confidence
-value displayed in the overlay.
-
-### 5. Size Measurement
-Each detected target's radius (in pixels) is converted to a real-world diameter:
-
-$$\text{diameter (in)} = \frac{\text{diameter (px)}}{\text{monitor PPI}}$$
-
-The label is drawn above each bounding box:
-```
-Circle | r=32px | d=64px (0.67in)
-```
-
-### 6. Auto-Click
-The `Clicker` selects the target whose center is **nearest to the current cursor
-position** (configurable) and fires `pyautogui.click()`. A configurable delay
-prevents spam-clicking. Optional humanization adds a small random pixel offset.
-
-### 7. Live Overlay
-An OpenCV window shows:
-- **Green bounding box** around each detected target
-- **Red circle outline** from HoughCircles
-- **Cyan center dot**
-- **Confidence bar** along the left edge of each box
-- **Label** with method, radius, diameter
-- **HUD panel** with FPS, detection count, click count, active mode
-- **Color mask inset** (bottom-right) showing what the bot "sees" after filtering
-
----
-
-## Installation
+Requires Python 3.10+. Written for Windows; on macOS and Linux the `keyboard` hotkey library needs root.
 
 ```bash
 pip install -r requirements.txt
+python main.py --no-click        # detection and overlay only, no clicking
+python main.py                   # detection + auto-click, default profile
+python main.py --profile orange  # other profiles: aimlab_white, orange, blue, cyan
+python main.py --no-hough        # contour detection only
+python main.py --scale 0.5       # process at half resolution on slower PCs
 ```
 
-> **Tesseract (optional):** If you enable `USE_OCR = True` in `config.py`,
-> install [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) and
-> `pip install pytesseract`.
-
----
-
-## Usage
-
-```bash
-# Default (auto-click enabled, aimlab_white profile)
-python main.py
-
-# Detection-only mode (no clicking)
-python main.py --no-click
-
-# Use a different color profile
-python main.py --profile orange
-
-# Disable HoughCircles, use contour detection only
-python main.py --no-hough
-
-# Process at 50% scale for lower-end PCs
-python main.py --scale 0.5
-```
-
-**Controls:**
-| Key | Action |
+| Control | Action |
 |---|---|
-| `Q` | Quit cleanly |
-| Mouse → top-left corner | Emergency stop (pyautogui failsafe) |
+| `*` | Turn detection on or off |
+| `-` | Emergency stop |
+| `Q` (overlay focused) | Quit |
+| Move mouse to the top-left corner | pyautogui failsafe stop |
 
----
+## Tuning
 
-## Tuning Color Profiles
+Color ranges live in `COLOR_PROFILES` in `config.py`. Use the mask inset in the bottom-right of the overlay to check that only the targets show up white, then adjust the HSV `lower` and `upper` bounds.
 
-Open `config.py` and adjust the `COLOR_PROFILES` dictionary.
-Use the mask inset in the overlay to verify your color range is isolating targets.
+## Note
 
-AimLab default targets appear **white** — the `aimlab_white` profile works for
-most tasks. Use `orange` for Gridshot if your settings use colored targets.
-
-To find the right HSV range:
-1. Screenshot a target
-2. Open it in the HSV tuner below (or use GIMP/Photoshop color picker)
-3. Adjust `lower`/`upper` in the profile
-
----
-
-## Key Computer Vision Concepts (for the report)
-
-| Term | Meaning |
-|---|---|
-| **HSV** | Color model where Hue is separated from brightness |
-| **Gaussian Blur** | Smooths image to reduce noise before processing |
-| **Binary mask** | Black/white image where white = target color |
-| **Morphological opening** | Removes small noise blobs from the mask |
-| **Morphological closing** | Fills small holes inside detected blobs |
-| **Hough Transform** | Votes-based algorithm for detecting geometric shapes |
-| **Contour** | Outline of a connected region in a binary image |
-| **Circularity** | Ratio measuring how close a shape is to a perfect circle |
-| **IoU** | Intersection-over-Union — metric for overlap between two boxes |
-| **PPI** | Pixels Per Inch — used to convert pixel measurements to real units |
+This is a school project for learning computer vision, run against AimLab's single-player training modes. It is not meant for use in online multiplayer games.
